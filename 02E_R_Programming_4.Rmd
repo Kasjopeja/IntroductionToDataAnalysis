@@ -268,8 +268,13 @@ Create a function that returns the product of two integers.
 
 ```{r}
 # Your code here:
-```
 
+adding <- function(x,y) {
+  return (x+y)
+}
+
+print(adding(2,4))
+```
 
 ------------------------------------------------------------------------
 
@@ -280,8 +285,15 @@ A function that takes an integer and a vector of integers, returning `TRUE` if t
 
 ```{r}
 # Your code here:
-```
 
+is_present <- function(num, vec) {
+  return(num %in% vec)
+}
+
+is_present(3, c(1, 2, 3, 4, 5))  
+is_present(10, c(1, 2, 3, 4, 5)) 
+
+```
 
 ------------------------------------------------------------------------
 
@@ -292,8 +304,14 @@ A function that takes an integer and a vector of integers, returning how many ti
 
 ```{r}
 # Your code here:
-```
 
+how_many <- function(num, vec) {
+  return(sum(vec == num)) 
+}
+  
+how_many(3, c(1, 2, 3, 3, 4, 5, 3))
+how_many(10, c(1, 2, 3, 4, 5)) 
+```
 
 ------------------------------------------------------------------------
 
@@ -304,8 +322,17 @@ We have small bars (1kg) and big bars (5kg). Given an integer of requested kilog
 
 ```{r}
 # Your code here:
-```
 
+bars <- function(kg) {
+  small <- kg %% 5
+  big <- (kg - small) / 5
+  
+  return (c(big,small))
+}
+
+bars(19)
+bars(16)
+```
 
 ------------------------------------------------------------------------
 
@@ -316,9 +343,15 @@ Create a function that returns `TRUE` if an integer is prime, else `FALSE`.
 
 ```{r}
 # Your code here:
+is_prime <- function(x) {
+  if (x < 2) return(FALSE)
+  return(!(as.logical(x %% 2)))
+}
+
+is_prime(5)
+is_prime(1)
+is_prime(6)
 ```
-
-
 
 ------------------------------------------------------------------------
 
@@ -329,8 +362,17 @@ Create a function that calculates the factorial of a number using a `for` loop.
 
 ```{r}
 # Your code here:
-```
 
+factorial <- function(x) {
+  r <- 1
+  for (i in 1:x) {
+    r <- r * i 
+  }
+  return (r)
+}
+
+factorial(4)
+```
 
 ------------------------------------------------------------------------
 
@@ -341,8 +383,13 @@ A function that takes `first_name` and `last_name`, returning a personalized gre
 
 ```{r}
 # Your code here:
-```
 
+greetings <- function(first_name, last_name) {
+  return (paste("Hello", first_name, last_name))
+}
+
+greetings("A", "Z")
+```
 
 ------------------------------------------------------------------------
 
@@ -353,8 +400,13 @@ A function that calculates the area of a circle given its radius `r`. The formul
 
 ```{r}
 # Your code here:
-```
 
+area <- function(r) {
+  return (pi *r^2)
+}
+
+area(5)
+```
 
 ------------------------------------------------------------------------
 
@@ -365,6 +417,15 @@ A function that converts a temperature from Celsius to Fahrenheit using the form
 
 ```{r}
 # Your code here:
+
+convert <- function(temp_c) { 
+  return(temp_c * (9/5) + 32)
+}
+
+convert(30)
+convert(20)
+convert(10)
+convert(0)
 ```
 
 ------------------------------------------------------------------------
@@ -376,8 +437,13 @@ A function that takes a string and returns its length using `nchar()`.
 
 ```{r}
 # Your code here:
-```
 
+len <- function(s) {
+  return(nchar(s))
+}
+
+len('ABC')
+```
 
 ------------------------------------------------------------------------
 
@@ -420,4 +486,3 @@ In this notebook, we covered:
     [RStudio Cheatsheets](https://rstudio.com/resources/cheatsheets/)\
 -   **Swirl - Learn R in R**:\
     [Interactive swirl tutorials](https://swirlstats.com/students.html)
-

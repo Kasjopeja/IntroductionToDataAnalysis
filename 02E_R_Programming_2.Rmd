@@ -10,35 +10,35 @@ date: "2025-03-08"
 
 This notebook covers:
 
-1. Basic **`for` loop** syntax  
-2. Looping over **vectors**, **lists**, and **matrices**  
-3. **Nested loops** for row-column iteration  
-4. Combining loops with conditional logic (`if`, `else if`, `else`)  
-5. Exercises to reinforce your knowledge  
+1.  Basic **`for` loop** syntax\
+2.  Looping over **vectors**, **lists**, and **matrices**\
+3.  **Nested loops** for row-column iteration\
+4.  Combining loops with conditional logic (`if`, `else if`, `else`)\
+5.  Exercises to reinforce your knowledge
 
----
+------------------------------------------------------------------------
 
 # 1. Understanding `for` Loops
 
 The basic syntax of a `for` loop in R is:
 
-```r
+``` r
 for (temporary_variable in object) {
   # Execute some code for each iteration
 }
 ```
 
-- **`temporary_variable`**: The loop variable that holds each element of `object` in turn.  
-- **`object`**: The data structure you want to iterate over (e.g., vector, list, matrix, data frame).
+-   **`temporary_variable`**: The loop variable that holds each element of `object` in turn.\
+-   **`object`**: The data structure you want to iterate over (e.g., vector, list, matrix, data frame).
 
----
+------------------------------------------------------------------------
 
 # 2. Looping Over a Vector
 
 There are two main ways to iterate over a vector:
 
-1. **Directly** using `in`, where each element is assigned to a temporary variable.  
-2. **By index**, iterating from `1` to `length(vec)`.
+1.  **Directly** using `in`, where each element is assigned to a temporary variable.\
+2.  **By index**, iterating from `1` to `length(vec)`.
 
 ## 2.1 Using a Temporary Variable
 
@@ -52,7 +52,7 @@ for (temp_var in vec) {
 }
 ```
 
-**Explanation**:  
+**Explanation**:\
 - Each element of `vec` is assigned to `temp_var` in turn, and then printed.
 
 ## 2.2 Using Indexing
@@ -63,11 +63,11 @@ for (i in 1:length(vec)) {
 }
 ```
 
-**Explanation**:  
-- The loop variable `i` runs from `1` to `length(vec)`.  
+**Explanation**:\
+- The loop variable `i` runs from `1` to `length(vec)`.\
 - This approach is handy if you need the index for additional operations.
 
----
+------------------------------------------------------------------------
 
 # 3. Looping Over a List
 
@@ -77,14 +77,14 @@ Lists can contain multiple data types (e.g., numeric, character, logical, or eve
 
 ```{r}
 # A list containing diverse elements
-li <- list(1, "two", 3.0, TRUE, list(inner = "nested"))
+li <- list(1, "two", 3.0, TRUE, list(inner = "nested", 1))
 
 for (temp_var in li) {
   print(temp_var)
 }
 ```
 
-**Explanation**:  
+**Explanation**:\
 - Each element, regardless of type, is printed in each iteration.
 
 ## 3.2 Using Indexing
@@ -95,11 +95,11 @@ for (i in 1:length(li)) {
 }
 ```
 
-**Explanation**:  
-- `li[[i]]` accesses the i-th element of the list.  
+**Explanation**:\
+- `li[[i]]` accesses the i-th element of the list.\
 - This is required for lists, since `li[i]` returns a **sublist** rather than the element itself.
 
----
+------------------------------------------------------------------------
 
 # 4. Looping Over a Matrix
 
@@ -117,7 +117,7 @@ for (num in mat) {
 }
 ```
 
-**Explanation**:  
+**Explanation**:\
 - Each element of `mat` is assigned to `num`, one by one.
 
 ## 4.2 Nested Loops for Row-Column
@@ -130,12 +130,12 @@ for (row in 1:nrow(mat)) {
 }
 ```
 
-**Explanation**:  
-- Outer loop iterates over rows.  
-- Inner loop iterates over columns (within each row).  
+**Explanation**:\
+- Outer loop iterates over rows.\
+- Inner loop iterates over columns (within each row).\
 - This pattern can be extended to more complex matrix operations.
 
----
+------------------------------------------------------------------------
 
 # 5. Advanced Looping Techniques
 
@@ -154,8 +154,8 @@ for (i in 1:nrow(df)) {
 }
 ```
 
-**Explanation**:  
-- Loop from `1` to `nrow(df)` to handle each row.  
+**Explanation**:\
+- Loop from `1` to `nrow(df)` to handle each row.\
 - Access columns by `df$ColumnName[i]`.
 
 ## 5.2 Combining Loops with Conditions
@@ -172,58 +172,79 @@ for (num in numbers) {
 }
 ```
 
-**Explanation**:  
-- Checks each number for even/odd status using `%%`.  
+**Explanation**:\
+- Checks each number for even/odd status using `%%`.\
 - `if`/`else` statements decide which message to print.
 
----
+------------------------------------------------------------------------
 
 # 6. Exercises
 
-Below are tasks to help you practice writing `for` loops. 
----
+## Below are tasks to help you practice writing `for` loops.
 
 ### Exercise 1: Cube of Numbers
 
-**Question**  
+**Question**\
 Write a for loop that iterates from 1 to 7 and prints the **cube** of each number (i.e., `n^3`).
 
 ```{r}
 # Your code here:
+for (i in 1:7) {
+  print(i^3)
+}
 ```
 
-
----
+------------------------------------------------------------------------
 
 ### Exercise 2: Column Names and Character Count
 
-**Question**  
-Iterate over the **column names** of the built-in **`iris`** dataset and print each name along with the **number of characters** in parentheses. For example, `"Sepal.Length (12)"`.  
+**Question**\
+Iterate over the **column names** of the built-in **`iris`** dataset and print each name along with the **number of characters** in parentheses. For example, `"Sepal.Length (12)"`.\
 Use `print()`, `paste0()`, and `nchar()`.
 
 ```{r}
 # Your code here:
+df <- iris
+
+for (name in names(df)) {
+  print(paste0(name, ' (',nchar(name), ')'))
+}
 ```
 
----
+------------------------------------------------------------------------
 
 ### Exercise 3: Simulate Coin Flips
 
-**Question**  
+**Question**\
 Use a for loop to simulate flipping a coin **20 times**. Store outcomes (1 = heads, 0 = tails) in a numeric vector. Use `rbinom(1, 1, 0.5)` to generate each flip.
 
 ```{r}
 # Your code here:
+
+outcomes <- c()
+
+for (i in 1:20) {
+  o <- rbinom(1, 1, 0.5)
+  if (o == 1)
+  {
+    o <- "heads"
+  } else {
+    o <-  "tails"
+  }
+  outcomes <- c(outcomes, o)
+}
+
+outcomes
 ```
 
----
+------------------------------------------------------------------------
 
 ### Exercise 4: Nested For Loop to Create a Matrix
 
-**Question**  
+**Question**\
 Use **nested** for loops to build the following 5x5 matrix (shown below). Initialize a 5x5 matrix with `NA` and fill it so that the element at row `r`, column `c` is some function of `r` and `c`. The final matrix looks like this:
 
-```
+```         
  0  1  2  3  4
  1  0  1  2  3
  2  1  0  1  2
@@ -233,62 +254,74 @@ Use **nested** for loops to build the following 5x5 matrix (shown below). Initia
 
 ```{r}
 # Your code here:
+
+m <- matrix(NA, 5, 5)
+
+for (i in 1:5) {
+  for (j in 1:5) {
+    m[i,j] <- abs(i-j)
+  }
+}
+
+m
+
 ```
 
-
----
+------------------------------------------------------------------------
 
 ### Exercise 5: Loop Through a List of Names
 
-**Question**  
+**Question**\
 Given a list of names, write a for loop that prints a personalized greeting for each name.
 
 ```{r}
 names_list <- list("Alice", "Bob", "Charlie", "Diana")
 
 # Your code here:
+for (name in names_list) {
+  print(paste("Hello", name))
+}
 ```
 
-
----
+------------------------------------------------------------------------
 
 # 7. Summary
 
 In this session, we covered:
 
-- **Basic syntax** of `for` loops  
-- Looping over **vectors**, **lists**, and **matrices**  
-- **Nested loops** for row-column iteration  
-- Using **conditional statements** (`if`) inside loops  
-- Practical exercises for strengthening loop skills
+-   **Basic syntax** of `for` loops\
+-   Looping over **vectors**, **lists**, and **matrices**\
+-   **Nested loops** for row-column iteration\
+-   Using **conditional statements** (`if`) inside loops\
+-   Practical exercises for strengthening loop skills
 
 **Key Takeaways**:
 
-1. A `for` loop iterates over each element (or index) in a sequence.  
-2. Use **double brackets** `[[ ]]` for list indexing.  
-3. **Nested loops** can handle multi-dimensional data but may impact performance.  
-4. Combining loops with `if/else` allows for more complex, conditional logic.
+1.  A `for` loop iterates over each element (or index) in a sequence.\
+2.  Use **double brackets** `[[ ]]` for list indexing.\
+3.  **Nested loops** can handle multi-dimensional data but may impact performance.\
+4.  Combining loops with `if/else` allows for more complex, conditional logic.
 
 **Next Steps**:
 
-1. **Complete** the exercises to reinforce your knowledge.  
-2. Explore **`while`** and **`repeat`** loops for other iterative patterns.  
-3. Compare loop performance to **vectorized operations** or **apply-family** functions (`lapply`, `sapply`, `apply`, etc.) for efficiency in large-scale data processing.
+1.  **Complete** the exercises to reinforce your knowledge.\
+2.  Explore **`while`** and **`repeat`** loops for other iterative patterns.\
+3.  Compare loop performance to **vectorized operations** or **apply-family** functions (`lapply`, `sapply`, `apply`, etc.) for efficiency in large-scale data processing.
 
----
+------------------------------------------------------------------------
 
 # References
 
-- [R Documentation: `for`](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/for)  
-- [R for Data Science](https://r4ds.had.co.nz/)  
-- [Advanced Control Structures in R](https://cran.r-project.org/doc/manuals/r-release/R-intro.html#Control-structures)  
-- [Logical Operators in R](https://stat.ethz.ch/R-manual/R-devel/library/base/html/Logic.html)
+-   [R Documentation: `for`](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/for)\
+-   [R for Data Science](https://r4ds.had.co.nz/)\
+-   [Advanced Control Structures in R](https://cran.r-project.org/doc/manuals/r-release/R-intro.html#Control-structures)\
+-   [Logical Operators in R](https://stat.ethz.ch/R-manual/R-devel/library/base/html/Logic.html)
 
----
+------------------------------------------------------------------------
 
 # Additional Resources
 
-- **RStudio Cheatsheets**:  
-  [RStudio Cheatsheets](https://rstudio.com/resources/cheatsheets/)  
-- **Swirl - Learn R in R**:  
-  [Interactive swirl tutorials](https://swirlstats.com/students.html)
+-   **RStudio Cheatsheets**:\
+    [RStudio Cheatsheets](https://rstudio.com/resources/cheatsheets/)\
+-   **Swirl - Learn R in R**:\
+    [Interactive swirl tutorials](https://swirlstats.com/students.html)
