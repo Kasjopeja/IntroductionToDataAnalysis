@@ -1,0 +1,28 @@
+---
+title: "K-Nearest Neighbors Project"
+
+---
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(ISLR)
+```
+
+
+We will apply the KNN approach to the Caravan data set, which is part of the ISLR library. This data set includes 85 predictors that measure demographic characteristics for 5,822 individuals. The response variable is Purchase, which indicates whether or not a given individual purchases a Caravan insurance policy. In this data set, **only 6%** of people purchased caravan insurance.
+
+[Dataset documentation](https://liacs.leidenuniv.nl/~puttenpwhvander/library/cc2000/data.html)
+
+
+Let's look at the dataset:
+
+```{r}
+?Caravan
+
+```
+
+```{r}
+Caravan  %>% 
+  head()
+```

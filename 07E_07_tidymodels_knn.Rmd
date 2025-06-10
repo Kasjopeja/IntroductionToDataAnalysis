@@ -1,0 +1,675 @@
+---
+title: "Comprehensive Guide to K-Nearest Neighbors (KNN) with Tidymodels"
+author: "Piotr Kosowski"
+date: "2025-05-26"
+editor_options:
+  markdown:
+    wrap: sentence
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align = 'center')
+```
+
+# Introduction to K-Nearest Neighbors (KNN)
+
+The K-Nearest Neighbors (KNN) algorithm is a versatile and intuitive machine learning method used for both **classification** and **regression** tasks.
+
+## What is KNN?
+
+The core idea behind KNN is simple:
+
+  - To classify a new data point, KNN looks at the $k$ data points in the training set that are "closest" to the new point (its "nearest neighbors").
+  - For **classification**, the new point is assigned to the class that is most common among its $k$ nearest neighbors (majority vote).
+  - For **regression**, the prediction for the new point is typically the average (or median) of the values of its $k$ nearest neighbors.
+
+KNN is non-parametric, meaning it doesn't make strong assumptions about the form of the underlying data distribution.
+
+## How KNN Works
+
+1.  **Choose the number of neighbors, $k$:** This is a hyperparameter that needs to be selected.
+2.  **Calculate Distances:** For a new data point to be predicted, calculate the distance between this new point and all points in the training dataset. Common distance metrics include:
+    -   **Euclidean Distance:** The most common, representing the straight-line distance between two points            $p = (p_1, p_2, \dots, p_n)$ and $q = (q_1, q_2, \dots, q_n)$ in an n-dimensional space. $$d(p,q) = \sqrt{\sum_{i=1}^{n} (p_i - q_i)^2}$$
+    
+    -   **Manhattan Distance (City Block Distance):** The sum of the absolute differences of their Cartesian coordinates. $$d(p,q) = \sum_{i=1}^{n} |p_i - q_i|$$
+    -   **Minkowski Distance:** A generalization of Euclidean and Manhattan distances. $$d(p,q) = \left(\sum_{i=1}^{n} |p_i - q_i|^p\right)^{1/p}$$ Euclidean is Minkowski with $p=2$, and Manhattan is Minkowski with $p=1$.
+3.  **Identify the $k$ Nearest Neighbors:** Select the $k$ training data points that are closest to the new data point based on the chosen distance metric.
+4.  **Make a Prediction:**
+    -   **Classification:** Assign the class label that appears most frequently among the $k$ neighbors. Ties can be broken arbitrarily or by using a smaller $k$.
+    -   **Regression:** Predict the average (or median) of the target values of the $k$ neighbors.
+
+## Pros of KNN
+
+-   **Simple to understand and implement:** The algorithm's logic is straightforward.
+-   **Non-parametric:** Makes no assumptions about the data distribution.
+-   **No explicit training phase:** The "training" phase mainly consists of storing the dataset. This makes it fast if new data needs to be added.
+-   **Versatile:** Can be used for both classification and regression.
+
+## Cons of KNN
+
+-   **Computationally expensive during prediction:** Calculating distances to all training points can be slow for large datasets.
+-   **Curse of Dimensionality:** Performance can degrade in high-dimensional spaces because the concept of "closeness" becomes less meaningful (points tend to be equidistant).
+-   **Sensitive to Feature Scaling:** Features with larger values or ranges can dominate the distance calculation. Therefore, **feature scaling (e.g., normalization or standardization) is crucial.**
+-   **Sensitive to Irrelevant Features:** Irrelevant features can distort the distance metric and lead to poor predictions. Feature selection or dimensionality reduction can be important.
+-   **Requires careful choice of $k$:** The value of $k$ significantly impacts performance.
+
+## Importance of Feature Scaling
+
+Since KNN relies on distances, features on larger scales can disproportionately influence the distance metric.
+For example, if one feature ranges from 0-1000 and another from 0-1, the first feature will dominate Euclidean distance.
+Scaling features (e.g., to a mean of 0 and standard deviation of 1, or to a range of [0,1]) ensures all features contribute more equally.
+
+## Choosing $k$
+
+The choice of $k$ involves a bias-variance trade-off:
+
+ - **Small $k$ (e.g., $k=1$):** 
+   - Low bias (model is very flexible and can capture local structure).
+   -  High variance (predictions can be very sensitive to noise and outliers in the training data; decision boundary can be very irregular).
+   - Prone to overfitting.
+- **Large $k$:**
+  - High bias (model is less flexible and may smooth out important local details).
+  - Low variance (predictions are more stable and less sensitive to individual data points).
+  - Prone to underfitting if $k$ is too large (e.g., $k=$ total number of training points would always predict the majority class/mean).
+  
+The optimal $k$ is typically chosen using cross-validation.
+
+This notebook will demonstrate how to implement KNN for both classification and regression tasks using the `tidymodels` framework, including feature scaling and hyperparameter tuning for $k$.
+
+
+# Setting up the Environment
+
+```{r}
+libs <- c("tidyverse", "tidymodels", "kknn") # kknn is an engine for KNN
+
+installed_libs <- libs %in% rownames(installed.packages())
+
+if (any(installed_libs == FALSE)) {
+  install.packages(libs[!installed_libs])
+}
+
+# Load libraries
+library(tidyverse)
+library(tidymodels)
+library(kknn) # For the kknn engine
+
+print("All the libraries already installed")
+```
+
+
+# Data
+
+We will be working with two datasets:
+1.  `churn_df`: Telecommunications customer churn data.
+2.  `home_sales`: Seattle home sales data.
+
+```{r}
+# Telecommunications customer churn data
+churn_df <- read_rds('churn_data.rds') # Make sure 'churn_data.rds' is in your working directory or provide the full path
+
+# Seattle home sales
+home_sales <- read_rds('home_sales.rds') %>% # Make sure 'home_sales.rds' is in your working directory
+              select(-selling_date)
+
+```
+
+
+# KNN for Classification (Customer Churn Prediction)
+
+We will first use KNN to predict whether customers will cancel their service (`canceled_service`) using the `churn_df` data.
+
+
+## 1. Data Preparation (Churn Data)
+
+Our target variable is `canceled_service`. For classification with `tidymodels`, the response variable should be a factor, and the first level is typically treated as the "positive" class for metrics like sensitivity and specificity.
+
+### Checking and Setting Factor Levels
+The event of interest is `canceled_service == 'yes'`. Let's check the current factor levels.
+
+```{r}
+# Ensure canceled_service is a factor (it likely already is from read_rds if saved as such)
+churn_df <- churn_df %>%
+    mutate(canceled_service = as.factor(canceled_service))
+
+levels(churn_df$canceled_service)
+```
+
+The output [1] "yes" "no" indicates that 'yes' is already the first level, which is our desired positive class. Thus, no recoding is needed
+
+
+### Data Splitting
+
+Now we split the data into training and testing sets, stratifying by `canceled_service`.
+
+```{r}
+set.seed(314) # For reproducibility
+
+churn_split <- initial_split(
+  churn_df,
+  prop = 0.75,
+  strata = canceled_service # Stratify by the outcome to maintain class proportion
+)
+
+churn_training <- training(churn_split)
+churn_test <- testing(churn_split)
+
+cat("Churn training set dimensions:", dim(churn_training), "\n")
+cat("Churn testing set dimensions:", dim(churn_test), "\n")
+```
+
+
+## 2. Exploratory Data Analysis (EDA) for Churn Data (Brief)
+
+Before feature engineering, it's good to look at the distributions of numeric predictors to identify potential issues like skewness, which might warrant transformation. The source notebook includes histograms for `months_with_company`, `monthly_charges`, and `late_payments`.
+
+```{r eda-churn-months}
+churn_training %>% # It's better to explore on the training set to avoid data leakage
+  ggplot(aes(x = months_with_company)) +
+  geom_histogram(fill = '#006EA1', color = 'white', bins = 20) +
+  labs(title = 'Distribution of Months with Company (Training Data)') +
+  theme_light()
+```
+
+```{r}
+churn_training %>%
+  ggplot(aes(x = monthly_charges)) +
+  geom_histogram(fill = '#006EA1', color = 'white', bins = 20) +
+  labs(title = 'Distribution of Monthly Charges (Training Data)') +
+  theme_light()
+```
+
+```{r}
+churn_training %>%
+  ggplot(aes(x = late_payments)) +
+  geom_histogram(fill = '#006EA1', color = 'white', bins = 20) + # Bins might need adjustment for discrete-like data
+  labs(title = 'Distribution of Late Payments (Training Data)') +
+  theme_light()
+```
+
+**Observations from EDA:**
+
+  - **months_with_company:** Shows a somewhat U-shaped or bimodal distribution, with many customers being relatively new or very long-term. This might indicate some skewness or distinct groups.
+  - **monthly_charges:** Appears somewhat normally distributed, perhaps slightly left-skewed or multimodal.
+  - **late_payments:** This variable is count-like and is clearly right-skewed, with most customers having few or zero late payments.
+  
+Given these distributions, especially the skewness in months_with_company and late_payments, applying a transformation like Yeo-Johnson in the recipe is a reasonable step.
+
+
+## 3. Feature Engineering (`recipes`) for Churn Data
+
+For KNN, preprocessing is critical:
+
+  - **Scaling Numeric Predictors:** KNN calculates distances. Features with larger scales will dominate. Normalization or standardization (`step_normalize`) is essential.
+  - **Handling Skewness:** Transformations like `step_YeoJohnson` can make distributions more symmetric, potentially improving distance calculations if they are sensitive to skewed data.
+  - **Dummy Variables for Categorical Predictors:** KNN needs numeric inputs. Categorical features must be converted, e.g., using `step_dummy`.
+
+Let's define the recipe based on these needs.
+
+```{r}
+churn_recipe <- recipe(
+  canceled_service ~ .,    # Predict canceled_service using all other predictors
+  data = churn_training  # Learn transformations from the training data
+) %>%
+  step_YeoJohnson(all_numeric_predictors(), -all_outcomes()) %>% # Address skewness in numeric predictors 
+  step_normalize(all_numeric_predictors(), -all_outcomes()) %>%  # Center and scale numeric predictors
+  step_dummy(all_nominal_predictors(), -all_outcomes())       # Create dummy variables for categorical predictors
+
+```
+
+
+**Explanation of Recipe Steps for KNN:**
+
+  - **step_YeoJohnson(all_numeric_predictors(), -all_outcomes()):** Transforms numeric predictors to reduce skewness. This can help in making the distance metric more robust, as extreme values in skewed distributions might disproportionately affect distances.
+  - **step_normalize(all_numeric_predictors(), -all_outcomes()):** Crucial for KNN. It scales numeric predictors to have a mean of $0$ and standard deviation of $1$. This prevents features with larger magnitudes from dominating the distance calculations, ensuring all features contribute more equally.
+  - **step_dummy(all_nominal_predictors(), -all_outcomes()):** Converts categorical features into numeric dummy (indicator) variables. KNN requires all inputs to be numeric to calculate distances.
+  
+  
+Apply the recipe to the training data to see the transformations.
+```{r}
+churn_recipe_prepped <- prep(churn_recipe, training = churn_training)
+baked_churn_training <- bake(churn_recipe_prepped, new_data = churn_training)
+
+baked_churn_training %>% 
+  head()
+```
+
+
+```{r}
+cat("First few rows of baked churn training data:\n")
+glimpse(baked_churn_training)
+```
+
+## 4. KNN Model Specification (`parsnip`) for Churn Data
+
+We use `nearest_neighbor()` from `parsnip`. The key hyperparameter is `neighbors` (often called `$k$`). Since we want to find the optimal `$k$`, we set `neighbors = tune()`.
+
+```{r}
+knn_model_spec_class <- nearest_neighbor(neighbors = tune()) %>% # `tune()` indicates this will be optimized
+  set_engine("kknn") %>%                    # Use the 'kknn' package as the engine
+  set_mode("classification")              # Specify the task as classification
+
+knn_model_spec_class
+```
+
+## 5. Creating Cross-Validation Folds (Churn Data)
+
+To tune hyperparameters like `$k$`, we need a way to estimate performance without using the test set. Cross-validation is used for this. We'll create 5-fold cross-validation from the `churn_training` data.
+
+```{r}
+set.seed(314) # For reproducibility of folds
+churn_folds <- vfold_cv(churn_training, v = 5, strata = canceled_service) # Stratify for balanced folds
+
+churn_folds
+```
+
+## 6. Building the KNN Workflow (Churn Data)
+
+A `workflow` bundles the recipe and model specification.
+
+```{r}
+knn_wf_class <- workflow() %>%
+  add_model(knn_model_spec_class) %>%  # Add the KNN model specification
+  add_recipe(churn_recipe)           # Add the preprocessing recipe
+
+knn_wf_class
+```
+
+## 7. Hyperparameter Tuning for 'k' (Churn Data)
+
+We'll perform a grid search to find the optimal value of `$k$` (neighbors).
+
+**Defining a Grid of 'k' Values:**
+We create a tibble with a range of `$k$` values to test. Choosing a range that includes small, medium, and relatively large values is a good starting point. The values  are `c(10, 20, 30, 50, 75, 100, 125, 150)`.
+
+```{r}
+k_grid_class <- tibble(neighbors = c(10, 20, 30, 50, 75, 100, 125, 150))
+
+# View grid
+k_grid_class
+```
+
+
+## Performing the Grid Search with tune_grid():
+
+This function will fit the KNN model for each value of $k$ in k_grid_class across all cross-validation folds (churn_folds) and evaluate performance, by default using roc_auc and accuracy for classification.
+
+```{r}
+set.seed(314) # For reproducible tuning results
+
+knn_tuning_class <- tune_grid(
+  knn_wf_class,              # The workflow with the tunable model
+  resamples = churn_folds,   # Cross-validation folds
+  grid = k_grid_class,       # Grid of k values to test
+  metrics = metric_set(roc_auc, accuracy, sensitivity, specificity, precision) # Specify metrics
+)
+
+# Display tuning results (metrics averaged over folds for each k)
+knn_tuning_class
+```
+
+
+Plotting the performance metric (e.g., roc_auc) against different values of $k$ can help understand how $k$ affects performance.
+
+```{r}
+autoplot(knn_tuning_class) +
+  labs(title = "KNN Hyperparameter Tuning (Churn Data)",
+       subtitle = "Performance vs. Number of Neighbors (k)") +
+  theme_light()
+```
+
+
+This plot shows how roc_auc (and other specified metrics) change as $k$ varies. We typically look for a $k$ that maximizes roc_auc or provides a good balance. Often, performance increases with $k$ up to a point, then plateaus or decreases if $k$ becomes too large (oversmoothing).
+
+**Selecting the Best 'k':**
+We can use `show_best()` to see the top-performing $k$ values and `select_best()` to programmatically extract the best one based on a chosen metric (e.g., roc_auc).
+
+```{r}
+# Show the top 5 best models based on roc_auc
+knn_tuning_class %>%
+  show_best(metric = "roc_auc", n = 5)
+
+```
+
+```{r}
+# Select the best k based on roc_auc
+best_k_class <- knn_tuning_class %>%
+  select_best(metric = "roc_auc")
+
+print("Best k for classification:")
+best_k_class
+```
+
+
+**Interpreting Tuning Results:**
+The `show_best()` output lists $k$ values and their mean performance across folds. A smaller $k$ makes the model more flexible (potentially higher variance, lower bias), while a larger $k$ leads to smoother decision boundaries (potentially lower variance, higher bias). The "best" $k$ (e.g., 100 or 125 or 75 from the output ) represents a good trade-off found by cross-validation for the chosen metric on this dataset.
+
+## 8. Finalizing Workflow and Fitting the Final Model (Churn Data)
+
+**Finalizing the Workflow:**
+Update the workflow with the best `$k$` value found during tuning.
+
+```{r}
+final_knn_wf_class <- knn_wf_class %>%
+  finalize_workflow(best_k_class)
+
+final_knn_wf_class
+```
+
+**Fitting the Final Model with `last_fit()`:**
+Now, fit this finalized workflow on the full training set and evaluate it once on the test set. `last_fit()` uses the original churn_split.
+
+```{r}
+# Fit the final model on the full training data and evaluate on the test data
+last_fit_knn_class <- final_knn_wf_class %>%
+  last_fit(split = churn_split)
+
+# Display the metrics calculated on the test set
+last_fit_knn_class %>%
+  collect_metrics()
+```
+
+## 9. Evaluating Performance on Test Set (Churn Classification)
+
+The `collect_metrics()` output from `last_fit_knn_class` gives us `accuracy` and `roc_auc` (and potentially others like `brier_class` if the engine supports it) on the test set. Let's interpret these and look at other detailed metrics.
+
+**Interpreting `collect_metrics()`:**
+
+ - `accuracy`: The proportion of customers in the test set whose churn status (`canceled_service`) was correctly predicted. An accuracy of e.g. `$0.858$` means `$85.8\%$` were correct].
+ - `roc_auc`: The Area Under the ROC Curve. A value of e.g. `$0.939$` indicates excellent discrimination ability of the model on the test set.
+
+**Collecting Predictions for Detailed Metrics:**
+
+To calculate a confusion matrix and other metrics like precision/recall, we need the predictions.
+```{r}
+knn_test_predictions_class <- last_fit_knn_class %>%
+  collect_predictions()
+
+# View the first few predictions
+head(knn_test_predictions_class)
+```
+
+**ROC Curve on Test Set:**
+
+Visualize the trade-off between sensitivity and specificity on the test data.
+
+```{r}
+roc_obj_class <- knn_test_predictions_class %>%
+  roc_curve(truth = canceled_service, .pred_yes, event_level = "first") # Assuming 'yes' is the positive event
+
+autoplot(roc_obj_class) +
+  labs(title = "KNN Classification ROC Curve (Churn Test Data)",
+       subtitle = paste("Test Set AUC =", scales::percent(
+         (last_fit_knn_class %>% collect_metrics() %>% filter(.metric == "roc_auc"))$.estimate,
+         accuracy = 0.1
+       ))) +
+  theme_light()
+```
+
+
+The ROC curve visually confirms the model's performance. A curve hugging the top-left corner indicates good performance.
+
+**Confusion Matrix on Test Set:**
+Understand the types of errors the model is making.
+
+```{r}
+conf_mat_obj_class <- knn_test_predictions_class %>%
+  conf_mat(truth = canceled_service, estimate = .pred_class)
+
+conf_mat_obj_class
+
+```
+
+```{r}
+autoplot(conf_mat_obj_class, type = "heatmap") +
+  labs(title = "Confusion Matrix (Churn Test Data)")
+```
+
+
+**Interpreting the Confusion Matrix:**
+
+  - **True Positives (Prediction=yes, Truth=yes):** Customers who churned and were correctly predicted as churners (e.g., 383 ).
+  - **True Negatives (Prediction=no, Truth=no):** Customers who did not churn and were correctly predicted as non-churners (e.g., 474 ).
+  - **False Positives (Prediction=yes, Truth=no):** Customers who did not churn but were incorrectly predicted as churners (e.g., 85 ). These are "false alarms"
+  - **False Negatives (Prediction=no, Truth=yes):** Customers who churned but were incorrectly predicted as non-churners (e.g., 59 ). These are "misses."
+  
+  
+From this, other metrics can be derived:
+
+  - **Precision:** $TP / (TP + FP)$. Of those predicted to churn, how many actually did?
+  - **Recall (Sensitivity):** $TP / (TP + FN)$. Of those who actually churned, how many were caught? These provide a more nuanced view than accuracy alone, especially if the classes are imbalanced or costs of errors differ.
+
+
+# KNN for Regression (Home Sales Prediction)
+
+Now, we demonstrate a KNN workflow for a regression task: predicting `selling_price` from the `home_sales` data. The process is very similar, but the mode and evaluation metrics will differ.
+
+
+## 1. Data Preparation (Home Sales Data)
+
+**Data Splitting and CV Folds:**
+Split the data and create cross-validation folds from the training set for hyperparameter tuning.
+
+```{r}
+set.seed(271) # For reproducibility
+
+# Create a split object
+homes_split <- initial_split(
+  home_sales,
+  prop = 0.75,
+  strata = selling_price # Stratify by the outcome
+)
+
+# Build training data set
+homes_training <- training(homes_split)
+
+# Build testing data set
+homes_test <- testing(homes_split)
+
+# Cross Validation folds from the training data
+homes_folds <- vfold_cv(homes_training, v = 5, strata = selling_price) # Using strata for regression splits outcome into quantiles
+
+cat("Home sales training dimensions:", dim(homes_training), "\n")
+cat("Home sales testing dimensions:", dim(homes_test), "\n")
+```
+
+## 2. Feature Engineering (`recipes`) for Home Sales
+
+The recipe will be similar: Yeo-Johnson for skewness, normalization for scaling (critical for KNN), and dummy variables for any nominal predictors (e.g., `city`)
+
+```{r}
+homes_recipe_knn <- recipe(selling_price ~ ., data = homes_training) %>%
+  step_YeoJohnson(all_numeric_predictors(), -all_outcomes()) %>%
+  step_normalize(all_numeric_predictors(), -all_outcomes()) %>%
+  step_dummy(all_nominal_predictors(), -all_outcomes()) # Ensure 'city' or other nominals are handled
+
+# Check the recipe
+homes_recipe_prepped_knn <- prep(homes_recipe_knn, training = homes_training) #
+baked_homes_training_knn <- bake(homes_recipe_prepped_knn, new_data = homes_training)
+
+cat("First few rows of baked home sales training data:\n")
+glimpse(baked_homes_training_knn) #
+```
+
+## 3. KNN Regression Model Specification
+
+Specify `nearest_neighbor()` with `neighbors = tune()` and `mode = "regression"`
+
+```{r}
+knn_model_spec_reg <- nearest_neighbor(neighbors = tune()) %>%
+  set_engine("kknn") %>%
+  set_mode("regression") # Set mode to regression
+
+knn_model_spec_reg
+```
+
+## 4. Building the KNN Regression Workflow
+
+Combine the model and recipe.
+```{r}
+knn_wf_reg <- workflow() %>%
+  add_model(knn_model_spec_reg) %>% 
+  add_recipe(homes_recipe_knn)
+
+knn_wf_reg
+```
+
+## 5. Hyperparameter Tuning for 'k' (Regression)
+
+**Defining the Grid:**
+Test a similar range of `$k$` values
+
+```{r}
+k_grid_reg <- tibble(neighbors = c(10, 20, 30, 50, 75, 100, 125, 150))
+
+# View grid
+k_grid_reg
+```
+
+
+**Performing Grid Search for Regression:**
+
+Use `tune_grid()`. For regression, default metrics include rmse and rsq.
+
+```{r}
+set.seed(314) # For reproducibility
+
+knn_tuning_reg <- tune_grid(
+  knn_wf_reg,
+  resamples = homes_folds,
+  grid = k_grid_reg,      
+  metrics = metric_set(rmse, rsq, mae) # Explicitly ask for Root Mean Squared Error, R-squared, Mean Absolute Error
+)
+
+knn_tuning_reg
+
+```
+
+**Visualizing Tuning Results (Regression):**
+
+Plot performance (e.g., rmse or rsq) against $k$. For rmse, we look for the minimum. For rsq, we look for the maximum.
+
+```{r}
+autoplot(knn_tuning_reg) +
+  labs(title = "KNN Hyperparameter Tuning (Home Sales Regression)",
+       subtitle = "Performance vs. Number of Neighbors (k)") +
+  theme_light()
+```
+
+
+This plot helps identify how the number of neighbors $k$ influences prediction error (rmse) and the proportion of variance explained (rsq).
+
+**Selecting the Best $k$ (Regression):**
+
+Use `show_best()` and `select_best()`, specifying a regression metric like rsq (to maximize) or rmse (to minimize).
+
+```{r}
+# Show top 5 models based on R-squared (higher is better)
+knn_tuning_reg %>%
+  show_best(metric = "rsq", n = 5)
+
+```
+
+```{r}
+# Show top 5 models based on RMSE (lower is better)
+knn_tuning_reg %>%
+  show_best(metric = "rmse", n = 5)
+
+```
+
+
+**Select the best k based on R-squared**
+```{r}
+best_k_reg <- knn_tuning_reg %>%
+  select_best(metric = "rsq")
+
+
+best_k_reg
+```
+
+
+
+The best $k$ (e.g., 20 from the output ) is the one that yielded the highest average rsq across the cross-validation folds.
+
+
+## 6. Finalizing Workflow and Fitting Final Model (Regression)
+
+**Finalizing the Workflow:**
+```{r}
+final_knn_wf_reg <- knn_wf_reg %>%
+  finalize_workflow(best_k_reg)
+
+final_knn_wf_reg
+```
+
+**Fitting with last_fit():**
+
+Train on the full training set and evaluate on the test set.
+
+```{r}
+last_fit_knn_reg <- final_knn_wf_reg %>%
+  last_fit(split = homes_split)
+
+# Display test set metrics
+last_fit_knn_reg %>%
+  collect_metrics()
+```
+
+## 7. Evaluating Performance on Test Set (Regression)
+
+**Interpreting `collect_metrics()` for Regression:**
+
+  - **`rmse` (Root Mean Squared Error):** The typical magnitude of prediction error, in the units of `selling_price`. A value of e.g. `$89780` means predictions are typically off by about $89,780. Lower is better.
+  - **`rsq` (R-squared):** The proportion of variance in `selling_price` explained by the model. An `rsq` of e.g. `$0.763` means about `$76.3\%` of the variance is explained. Higher is better (closer to 1).
+
+**Collecting Predictions for Visualization:**
+```{r}
+knn_test_predictions_reg <- last_fit_knn_reg %>%
+  collect_predictions()
+
+# View the first few predictions
+head(knn_test_predictions_reg)
+```
+
+**Actual vs. Predicted Plot (R2 Plot):**
+
+This plot helps visualize how well the model's predictions (.pred) align with the actual selling_price.
+
+```{r}
+knn_test_predictions_reg %>%
+  ggplot(aes(x = .pred, y = selling_price)) +
+  geom_point(alpha = 0.5, color = '#006EA1') + # Scatter plot of predicted vs actual
+  geom_abline(intercept = 0, slope = 1, color = 'orange', linetype = "dashed", linewidth = 1) + # Line of perfect agreement
+  labs(
+    title = 'KNN Regression Results - Home Sales Test Set',
+    x = 'Predicted Selling Price',
+    y = 'Actual Selling Price'
+  ) +
+  theme_light() +
+  coord_fixed() # Ensures a 1:1 aspect ratio for better visual assessment
+```
+
+
+**Interpretation of the R2 Plot:**
+Points clustered closely around the dashed orange line (where predicted = actual) indicate good model performance. The spread of points around this line gives a visual sense of the prediction error. An $R^2$ of $0.763  suggests a reasonably good fit, as also visualized by the points generally following the trend line, although with notable scatter.
+
+
+# Conclusion
+
+This notebook demonstrated the K-Nearest Neighbors algorithm for both classification and regression tasks using the `tidymodels` framework. Key steps included:
+
+  - **Theoretical Understanding:** Grasping how KNN works, its reliance on distance metrics, and the importance of `$k$`.
+  - **Data Preparation:** Emphasizing feature scaling (`step_normalize`) and handling categorical variables (`step_dummy`) as crucial preprocessing steps for KNN. Skewness correction (`step_YeoJohnson`) can also be beneficial.
+  - **Hyperparameter Tuning:** Using cross-validation (`vfold_cv`) and grid search (`tune_grid`) to find an optimal value for `$k` (neighbors). Visualizing tuning results with `autoplot()` provides insight into the model's sensitivity to `$k$`.
+  - **Workflow Automation:** Leveraging `workflow()` to bundle preprocessing and model specifications, and `last_fit()` to streamline the final training and evaluation on the test set.
+  - **Evaluation:** Using appropriate metrics from `yardstick` for classification (ROC AUC, accuracy, confusion matrix) and regression (RMSE, R-squared) and visualizing results (ROC curve, Actual vs. Predicted plot).
+
+KNN is a conceptually simple yet powerful algorithm. Its performance heavily depends on appropriate preprocessing and careful selection of `$k$`.
+
+# Further Considerations/Advanced Topics
+
+  - **Weighted KNN:** Instead of a simple majority vote or average, neighbors can be weighted by their distance (closer neighbors get a higher weight). The `kknn` engine in R supports various weighting kernels (see `kknn::train.kknn` documentation for `kernel` options like "triangular", "gaussian", "optimal", etc.). This can be set via `set_engine("kknn", "distance" = 2, "kernel" = "optimal")` for example, where `distance` is the power for Minkowski distance. The `weight_func` argument in `nearest_neighbor()` can also be tuned.
+  - **Other Distance Metrics:** While Euclidean is common, other metrics (Manhattan, Minkowski with different `$p$`, etc.) might be more appropriate depending on the data. Some KNN implementations allow specifying the distance metric.
+  - **Curse of Dimensionality:** As the number of features (dimensions) increases, the distance between points becomes less meaningful, and the volume of the space grows exponentially, requiring more data to maintain density. Feature selection or dimensionality reduction techniques (like PCA, using `step_pca` in a recipe) can be beneficial before applying KNN to high-dimensional data.
+  - **Alternative Tuning Strategies:** Instead of `tune_grid`, `tidymodels` also supports more advanced tuning strategies like Bayesian optimization (`tune_bayes()`) which can be more efficient for finding optimal hyperparameters when the search space is large.
+  - **Computational Cost:** For very large datasets, approximate nearest neighbor search algorithms might be necessary to make prediction feasible.
+

@@ -1,0 +1,437 @@
+---
+title: "Support Vector Machines (SVM) with Tidymodels"
+author: "Piotr Kosowski"
+date: "2025-06-04"
+---
+
+```{r include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align = 'center')
+```
+
+# Introduction to Support Vector Machines (SVM)
+
+Support Vector Machines (SVMs) are powerful and versatile supervised machine learning models used for **classification**, **regression**, and **outlier detection**. They are particularly effective in high-dimensional spaces and are well-suited for cases where the number of dimensions exceeds the number of samples.
+
+## Core Idea: Finding an Optimal Hyperplane
+
+The fundamental idea behind SVMs, especially for classification, is to find a **hyperplane** in an N-dimensional space (where N is the number of features) that distinctly classifies the data points.
+
+-   For a binary classification problem, this hyperplane is a decision boundary that separates data points of one class from those of the other.
+-   There might be many hyperplanes that can separate the classes. SVM aims to find the one that has the **maximal margin**, i.e., the largest distance between the hyperplane and the nearest data points from either class.
+
+## Maximal Margin Classifier
+
+In a simple, linearly separable case:
+
+-   The **hyperplane** can be defined by the equation: $w \cdot x - b = 0$, where $w$ is a weight vector and $b$ is a bias.
+-   The **margin** is the distance between the hyperplane and the closest data points. SVM seeks to maximize this margin.
+-   The data points that are closest to the hyperplane and dictate its position and orientation are called **support vectors**.
+
+## Support Vectors
+
+These are the data points that lie closest to the decision surface (hyperplane). They are the most difficult points to classify and have a direct bearing on the optimum location of the decision surface. If all other training examples were removed (those not support vectors), and training was repeated, the same separating hyperplane would be found.
+
+## Soft Margin Classifier (Non-Linearly Separable Data)
+
+In most real-world scenarios, data is not perfectly linearly separable. To handle this, SVMs can be extended to a **soft margin classifier**. \* This allows some data points to be on the wrong side of the margin, or even on the wrong side of the hyperplane (misclassified). \* A **cost parameter** $C$ (often referred to as `cost` in `tidymodels` or `kernlab`) is introduced. This parameter controls the trade-off between maximizing the margin and minimizing the classification error on the training data. \* A **small** $C$ creates a larger margin but allows more margin violations (more tolerant of misclassifications, can lead to underfitting). \* A **large** $C$ creates a smaller margin and penalizes margin violations more heavily (less tolerant of misclassifications, can lead to overfitting).
+
+## The Kernel Trick (Handling Non-Linear Relationships)
+
+For complex, non-linear relationships, SVMs use the **kernel trick**. The idea is to map the original input data into a higher-dimensional feature space where a linear separation might be possible. The "trick" is that the actual transformation doesn't need to be explicitly computed; instead, kernel functions compute the dot products between images of pairs of data points in the higher-dimensional space.
+
+Common kernel functions include:
+
+1.  **Linear Kernel:**
+    -   Formula: $K(x_i, x_j) = x_i \cdot x_j$
+    -   Used when the data is already linearly separable or when the number of features is very large. This is equivalent to not using a kernel in the sense of mapping to a higher dimension implicitly.
+2.  **Polynomial Kernel:**
+    -   Formula: $K(x_i, x_j) = (\gamma x_i \cdot x_j + r)^d$
+    -   Tunable parameters:
+        -   $d$: degree of the polynomial (parameter `degree` in `parsnip`).
+        -   $\gamma$: scale parameter (parameter `scale_factor` in `parsnip`, corresponds to `scale` in `kernlab`).
+        -   $r$: constant term (parameter `coef0` in `parsnip`, corresponds to `offset` in `kernlab`).
+3.  **Radial Basis Function (RBF) Kernel:**
+    -   A very popular and flexible kernel. It can map samples to an infinitely dimensional space.
+    -   Formula: $K(x_i, x_j) = \exp(-\gamma \|x_i - x_j\|^2)$ or sometimes $K(x_i, x_j) = \exp(-\sigma \|x_i - x_j\|^2)$
+    -   Tunable parameter:
+        -   $\gamma$ (gamma) or $\sigma$ (sigma): Defines how much influence a single training example has. Larger gamma means a closer reach (more complex boundary), smaller gamma means a further reach (smoother boundary).
+        -   In `tidymodels` for the `kernlab` engine, this is `rbf_sigma` in the `svm_rbf()` specification, which corresponds to `sigma` in `kernlab`'s `ksvm` function. A smaller `rbf_sigma` leads to a more flexible (potentially wiggly) boundary, while a larger `rbf_sigma` leads to a smoother boundary.
+
+## SVM for Classification and Regression
+
+-   **SVC (Support Vector Classification):** The primary focus of this notebook.
+-   **SVR (Support Vector Regression):** SVMs can also be used for regression tasks. Instead of finding a hyperplane that separates classes, SVR tries to find a hyperplane that fits as many data points as possible within a certain margin (epsilon-insensitive tube).
+
+## Pros of SVM
+
+-   Effective in high-dimensional spaces (good when number of dimensions \> number of samples).
+-   Memory efficient as they use a subset of training points (support vectors) in the decision function.
+-   Versatile due to different kernel functions that can be specified.
+-   Effective when there's a clear margin of separation.
+
+## Cons of SVM
+
+-   Can be computationally intensive and slow to train on very large datasets.
+-   Choosing the right kernel and tuning its parameters can be challenging and crucial for performance.
+-   SVMs are often considered "black box" models, as the direct interpretation of the model's decision boundary in the original feature space can be difficult, especially with non-linear kernels.
+-   Performance can be poor if data is very noisy or classes overlap significantly.
+
+## Importance of Feature Scaling
+
+Similar to KNN, SVMs are highly sensitive to the scale of input features, especially when using kernels like RBF that involve distance calculations. Features with larger values can dominate those with smaller values. **It is crucial to scale features (e.g., normalization or standardization) before training an SVM.**
+
+This notebook will guide you through building SVM classification models for the Titanic dataset using `tidymodels`, including feature engineering, hyperparameter tuning, and model evaluation.
+
+# Setting up the Environment
+
+```{r}
+libs <- c("tidyverse", "tidymodels", "kernlab", "doParallel") # kernlab for SVM engine, doParallel for parallel processing
+
+installed_libs <- libs %in% rownames(installed.packages())
+
+if (any(installed_libs == FALSE)) {
+  install.packages(libs[!installed_libs])
+}
+
+# Load libraries
+library(tidyverse)
+library(tidymodels)
+library(kernlab) # Engine for svm_rbf and svm_poly
+library(doParallel) # For parallel processing during resampling/tuning
+
+print("All necessary libraries should be loaded.")
+```
+
+# Loading Titanic Data
+
+We'll use the classic Titanic dataset. The goal is to predict whether a passenger survived based on other characteristics.
+
+```{r}
+titanic_train_raw <- read_csv('titanic_train.csv') # Ensure this file path is correct
+titanic_test_raw <- read_csv('titanic_test.csv')   # Ensure this file path is correct
+```
+
+```{r}
+titanic_train_raw %>% 
+  head()
+```
+
+```{r}
+titanic_test_raw %>% 
+  head()
+```
+
+Our goal is to predict if a traveler survived (Survived column) or not. This is a binary classification problem. We will use a supervised learning approach.
+
+## General Machine Learning Workflow Steps
+
+The typical machine learning project involves several steps: \* Loading necessary libraries and data. \* Exploratory Data Analysis (EDA) to understand the data. \* Splitting data into training and testing sets (and potentially a validation set). \* Further resampling of the training data (e.g., cross-validation, bootstrapping) for model selection or hyperparameter tuning. \* Declaring model specifications. \* Declaring recipes for feature engineering based on EDA. \* Fitting models to resamples, possibly with different hyperparameters or in workflows. \* Assessing results to choose a final model. \* Fitting the final model (with chosen algorithm and hyperparameters) to the entire training set. \* Making predictions on the testing data to report generalization performance (accuracy, error, etc.).
+
+## Data Splitting and Resampling Strategy
+
+The provided `titanic_train.csv` contains labels (`Survived`), while `titanic_test.csv` does not and is typically used for submitting predictions (e.g., on Kaggle).
+
+For robust model development and evaluation, we will: 1. Split the `titanic_train_raw` data into an actual training set (`actual_train`) and an actual test set (`actual_test`). This `actual_test` will be our hold-out set to evaluate the final model's performance. 2. Create cross-validation folds from `actual_train` for hyperparameter tuning. 3. After finding the best model, we will fit it to the *entire* `titanic_train_raw` dataset to make predictions on `titanic_test_raw`.
+
+First, let's perform the initial split of `titanic_train_raw`.
+
+```{r}
+set.seed(123) # For reproducibility
+
+titanic_train_raw = titanic_train_raw %>% 
+  mutate(Survived = factor(Survived, levels = c(0, 1), labels = c("Not_Survived", "Survived"))) # Ensure Survived is a factor
+
+titanic_initial_split <- initial_split(titanic_train_raw, prop = 0.80, strata = Survived)
+actual_train <- training(titanic_initial_split)
+actual_test <- testing(titanic_initial_split)
+
+cat("Dimensions of actual_train:", dim(actual_train), "\n")
+cat("Dimensions of actual_test:", dim(actual_test), "\n")
+```
+
+Now, create cross-validation folds from actual_train for tuning.
+
+```{r}
+set.seed(2022) 
+titanic_cv_folds <- vfold_cv(actual_train, v = 10, strata = Survived) # 10-fold CV
+
+titanic_cv_folds
+```
+
+## Feature Engineering (`recipes`) for Titanic Data
+
+A recipe will handle preprocessing steps consistently. The recipe from the source notebook is a good starting point.
+
+```{r}
+titanic_recipe <- recipe(
+  Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked, # Define formula
+  data = actual_train # Learn from the actual training set
+) %>%
+  step_impute_median(Age, Fare) %>%                 # Impute missing Age and Fare with median
+  step_impute_mode(Embarked) %>%                    # Impute missing Embarked with mode
+  step_mutate_at(Pclass, Sex, Embarked, fn = factor) %>% # Convert specific columns to factors
+  step_mutate(Travelers = SibSp + Parch + 1) %>%    # Create a new feature 'Travelers'
+  step_rm(SibSp, Parch) %>%                         # Remove original SibSp and Parch
+  step_dummy(all_nominal_predictors()) %>%          # Create dummy variables for all nominal predictors
+  step_normalize(all_numeric_predictors())          # Normalize all numeric predictors
+
+# Print the recipe
+titanic_recipe
+```
+
+**Detailed Explanation of Recipe Steps:**
+
+-   `recipe(Survived ~ ..., data = actual_train)`: Initializes the recipe. `Survived` is the outcome. Predictors include `Pclass`, `Sex`, `Age`, `SibSp`, `Parch`, `Fare`, `Embarked`. Other columns in `titanic_train_raw` (like Name, Ticket, Cabin, PassengerId) are excluded here but could be engineered if desired (e.g., extracting titles from Name).
+-   `step_impute_median(Age, Fare)`: Replaces missing values (NA) in `Age` and `Fare` with their respective medians, calculated from the `actual_train data`. Median is robust to outliers.
+-   `step_impute_mode(Embarked)`: Replaces missing values in the categorical `Embarked` column with its mode (most frequent value), calculated from `actual_train`.
+-   `step_mutate_at(Survived, Pclass, Sex, Embarked, fn = factor)`: Converts these columns to factors. `Survived` needs to be a factor for classification. `Pclass` (passenger class) is ordinal but often treated as categorical. `Sex` and `Embarked` are inherently categorical.
+-   `step_mutate(Travelers = SibSp + Parch + 1)`: Creates a new feature `Travelers`, representing the total number of family members on board (siblings/spouses + parents/children + the passenger themselves). This combines information from `SibSp` and `Parch`.
+-   `step_rm(SibSp, Parch)`: Removes the original `SibSp` and `Parch` columns, as their information is now captured in the Travelers feature.
+-   `step_dummy(all_nominal_predictors())`: Converts all factor/character predictor columns (now Pclass, Sex, Embarked) into numeric dummy (indicator) variables. SVMs require numeric input.
+-   `step_normalize(all_numeric_predictors())`: Centers and scales all numeric predictors (now Age, Fare, Travelers, and the newly created dummy variables which are already 0/1 but will be affected if not excluded). This is critical for SVM performance.
+
+Let's verify the recipe (optional but good practice):
+
+```{r}
+prep_titanic_recipe <- prep(titanic_recipe, training = actual_train)
+bake_example <- bake(prep_titanic_recipe, new_data = head(actual_train))
+glimpse(bake_example)
+```
+
+## SVM Model Specification (`parsnip`)
+
+We will use an SVM with a Radial Basis Function (RBF) kernel, provided by the `kernlab` engine.
+
+The key tunable hyperparameters for `svm_rbf` are:
+
+-   `cost`: The cost of constraints violation (often denoted as $C$). It controls the trade-off between a smooth decision boundary and classifying training points correctly.
+-   `rbf_sigma`: The RBF kernel's sigma parameter (often denoted as $\sigma$ or related to $\gamma$). It defines the "reach" or "influence" of a single training example.
+
+We set these to `tune()` to optimize them.
+
+```{r}
+svm_spec_tune <- svm_rbf(
+  cost = tune(),      # Tune the cost parameter
+  rbf_sigma = tune()  # Tune the RBF sigma parameter
+) %>%
+  set_engine("kernlab") %>%
+  set_mode("classification")
+
+svm_spec_tune
+```
+
+## Building the SVM Workflow
+
+Combine the recipe and the tunable SVM model specification into a workflow.
+
+```{r}
+svm_wf_tune <- workflow() %>%
+  add_recipe(titanic_recipe) %>%
+  add_model(svm_spec_tune)
+
+svm_wf_tune
+```
+
+## Hyperparameter Tuning for SVM
+
+We will tune `cost` and `rbf_sigma` using grid search with our cross-validation folds (`titanic_cv_folds`).
+
+### Defining a Tuning Grid
+
+It's often beneficial to search `cost` and `rbf_sigma` on a log scale.
+
+We can identify tunable parameters using `hardhat::extract_parameter_set_dials()`:
+
+```{r}
+hardhat::extract_parameter_set_dials(svm_spec_tune)
+```
+
+Let's create a regular grid.
+
+```{r}
+set.seed(345) # For reproducibility of the grid if random elements were used
+
+# Create a grid for cost and rbf_sigma
+
+svm_param_grid <- grid_regular(
+  cost(range = c(-2, 2), trans = log10_trans()), # Cost from 0.01 to 100
+  rbf_sigma(range = c(-3, 0), trans = log10_trans()), # Sigma from 0.001 to 1
+  levels = 5 # 5 levels for each parameter, resulting in 5x5 = 25 combinations
+)
+# Alternative: dials::parameters(cost(), rbf_sigma()) %>% grid_random(size = 20) for random search
+
+print(svm_param_grid)
+```
+
+## Tuning with `tune_grid()`
+
+We'll use `roc_auc` as the primary metric for optimization, but also collect accuracy. `doParallel::registerDoParallel()` can be used to speed up tuning if you have multiple cores.
+
+```{r}
+# Register parallel backend (optional, but recommended for tuning)
+num_cores <- parallel::detectCores(logical = FALSE)
+cl <- makePSOCKcluster(num_cores -1 ) # Leave one core free
+registerDoParallel(cl)
+
+set.seed(456) # For reproducibility of tuning
+svm_tune_results <- tune_grid(
+  svm_wf_tune,                # Tunable workflow
+  resamples = titanic_cv_folds, # Cross-validation folds
+  grid = svm_param_grid,        # Parameter grid
+  metrics = metric_set(roc_auc, accuracy), # Metrics to evaluate
+  control = control_grid(save_pred = TRUE, verbose = TRUE) # Optional: save predictions, be verbose
+)
+
+svm_tune_results
+```
+
+## Visualizing Tuning Results
+
+An `autoplot()` of the tuning results can show how performance varies across the hyperparameter grid.
+
+```{r}
+autoplot(svm_tune_results) +
+  labs(title = "SVM Hyperparameter Tuning (Titanic Data)",
+       subtitle = "Performance (ROC AUC) vs. Cost and RBF Sigma") +
+  theme_light()
+```
+
+Selecting Best Hyperparameters
+
+```{r}
+# Show top 5 best hyperparameter combinations based on roc_auc
+show_best(svm_tune_results, metric = "roc_auc", n = 5)
+```
+
+```{r}
+# Select the single best set of hyperparameters
+best_svm_params <- select_best(svm_tune_results, metric = "roc_auc")
+
+best_svm_params
+```
+
+## Finalizing Workflow and Evaluating on Test Set (using `last_fit`)
+
+Now we finalize the workflow with the best hyperparameters and evaluate its performance on the `actual_test` set using `last_fit()`. `last_fit` takes the *initial split object*.
+
+```{r}
+# Finalize the original tunable workflow with the best parameters
+final_svm_wf <- finalize_workflow(svm_wf_tune, best_svm_params)
+
+
+print(final_svm_wf)
+```
+
+```{r}
+# Fit this final workflow on the training part of the initial_split
+# and evaluate on the testing part of the initial_split
+set.seed(567) # For reproducibility of the fit if any random aspect exists
+
+final_svm_results_on_test <- last_fit(
+  final_svm_wf,
+  split = titanic_initial_split # Use the split of titanic_train_raw into actual_train/actual_test
+)
+
+# View performance metrics on the actual_test set
+
+collect_metrics(final_svm_results_on_test)
+
+```
+
+Let's look at the confusion matrix and ROC curve for the predictions on our `actual_test` set.
+
+```{r}
+# Collect predictions made by last_fit on the actual_test set
+actual_test_predictions <- collect_predictions(final_svm_results_on_test)
+head(actual_test_predictions)
+```
+
+```{r}
+# Confusion Matrix
+conf_mat_obj <- actual_test_predictions %>%
+  conf_mat(truth = Survived, estimate = .pred_class)
+
+conf_mat_obj
+
+```
+
+```{r}
+autoplot(conf_mat_obj, type = "heatmap") +
+  labs(title = "SVM Confusion Matrix (Actual Test Set)")
+
+```
+
+```{r}
+# ROC Curve and AUC
+roc_auc_obj <- actual_test_predictions %>%
+  roc_auc(truth = Survived, .pred_Not_Survived, event_level = "first")
+
+roc_auc_obj
+```
+
+```{r}
+roc_curve_plot <- actual_test_predictions %>%
+  roc_curve(truth = Survived, .pred_Survived, event_level = "second") %>%
+  autoplot() +
+  labs(title = "SVM ROC Curve (Actual Test Set)",
+       subtitle = paste("AUC =", scales::percent(roc_auc_val$.estimate, accuracy = 0.1)))
+
+
+roc_curve_plot
+```
+
+## Interpreting Performance on `actual_test`:
+
+-   The `collect_metrics` output from `last_fit` (e.g., roc_auc and accuracy) gives a good summary.
+-   The Confusion Matrix shows how many passengers were correctly/incorrectly classified as survived or not survived. From this, you can manually calculate precision, recall, specificity if needed.
+-   The ROC Curve and AUC value indicate the model's ability to discriminate between survivors and non-survivors. An AUC well above $0.5$ (e.g., $0.8$) would indicate good performance.
+
+## Fitting to Full Training Data and Predicting on Original Test Set
+
+For a Kaggle-style submission, you would train your final, tuned model on the *entire* `titanic_train_raw` dataset and then make predictions on `titanic_test_raw`.
+
+```{r}
+# Fit the final workflow on the ENTIRE original training dataset
+full_train_final_svm_fit <- fit(
+  final_svm_wf,
+  data = titanic_train_raw # Use all of titanic_train_raw
+)
+```
+
+```{r}
+# Make predictions on the original test dataset (titanic_test_raw)
+# This dataset does not have a 'Survived' column.
+predictions_on_kaggle_test <- predict(
+  full_train_final_svm_fit,
+  new_data = titanic_test_raw,
+  type = "class" # Get class predictions
+)
+
+predictions_on_kaggle_test
+```
+
+```{r}
+# You can also get probabilities if needed
+predictions_prob_on_kaggle_test <- predict(
+  full_train_final_svm_fit,
+  new_data = titanic_test_raw,
+  type = "prob"
+)
+
+predictions_prob_on_kaggle_test
+
+```
+
+# Conclusion
+
+This notebook provided a comprehensive guide to using Support Vector Machines (SVMs) with the `tidymodels` framework, focusing on the Titanic survival prediction task. Key aspects covered include: \* **SVM Theory:** Understanding maximal margin classifiers, soft margins, support vectors, and the kernel trick (especially RBF). \* **Data Preparation:** Implementing a robust preprocessing `recipe` including imputation, factor conversion, feature creation, dummy variable creation, and crucially, normalization for SVMs. \* **Hyperparameter Tuning:** Systematically tuning SVM parameters (`cost` and `rbf_sigma`) using cross-validation and grid search to optimize model performance (`roc_auc`). \* **Workflow Management:** Utilizing `tidymodels` workflows to bundle preprocessing and model specifications, and employing `last_fit` for a final evaluation on a hold-out test set. \* **Model Evaluation:** Assessing model performance using metrics like ROC AUC, accuracy, and the confusion matrix. \* **Prediction:** Fitting the final model on the full training dataset to make predictions on new, unseen data.
+
+SVMs are powerful models, particularly for complex classification tasks. Their effectiveness with `tidymodels` is enhanced by the clear separation of preprocessing, model definition, tuning, and evaluation steps.
+
+# Further Considerations
+
+-   **Other Kernels:** Experiment with `svm_poly()` (polynomial kernel) or `svm_linear()`. Each has its own set of hyperparameters to tune (e.g., `degree` for polynomial).
+-   **Support Vector Regression (SVR):** `tidymodels` also supports SVR by setting `set_mode("regression")` with SVM specifications.
+-   **Computational Cost:** Be mindful that SVM tuning, especially with large grids or datasets, can be computationally expensive. Parallel processing helps.
+-   **Alternative Tuning:** For more complex search spaces, consider `tune_bayes()` for Bayesian optimization of hyperparameters.
+-   **Imbalanced Data:** If dealing with highly imbalanced classes, explore techniques like oversampling (e.g., `themis::step_smote`), undersampling, or adjusting class weights within the SVM model if the engine supports it (some `kernlab` options might allow this, or use different metrics).

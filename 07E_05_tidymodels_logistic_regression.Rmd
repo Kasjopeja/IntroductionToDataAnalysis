@@ -77,7 +77,7 @@ This notebook will demonstrate how to perform logistic regression using the tidy
 We'll load tidymodels for the core modeling framework, tidyverse for data manipulation and visualization, and vip for variable importance plots.
 
 ```{r}
-libs <- c("tidyverse", "tidymodels", "vip")
+libs <- c("tidyverse", "tidymodels", "vip", "future")
 
 installed_libs <- libs %in% rownames(installed.packages())
 
